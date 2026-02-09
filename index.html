@@ -3,42 +3,217 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ADXL335 Part 4 (GitHub Pages)</title>
+  <title>ADXL335 Tractor Tilt (GitHub Pages)</title>
   <style>
-    body { font-family: system-ui, Arial; margin: 16px; }
-    #row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-    #angles { padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
-    #threeWrap { height: 420px; border: 1px solid #ddd; border-radius: 10px; overflow: hidden; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .hint { color: #666; font-size: 14px; margin-top: 8px; }
+    :root{
+      --bg1:#f6fff2;
+      --bg2:#fff7e6;
+      --card:#ffffffcc;
+      --stroke:#d6e6d0;
+      --text:#234a2a;
+      --muted:#4f6b52;
+      --accent:#2f7a3d;
+      --accent2:#f2b84b;
+    }
+
+    body{
+      margin:16px;
+      font-family: system-ui, -apple-system, Segoe UI, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 15% 10%, var(--bg2), transparent 60%),
+        radial-gradient(900px 500px at 90% 0%, var(--bg1), transparent 60%),
+        linear-gradient(180deg, #f9fff6 0%, #fffaf0 100%);
+    }
+
+    header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:12px;
+    }
+
+    .titleWrap h2{
+      margin:0;
+      font-size: 22px;
+      letter-spacing: .2px;
+    }
+    .subtitle{
+      margin-top:6px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.35;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 10px;
+      border:1px solid var(--stroke);
+      border-radius:999px;
+      background: var(--card);
+      box-shadow: 0 6px 18px rgba(0,0,0,.06);
+      font-size:13px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:50%;
+      background:#c9c9c9;
+      box-shadow: 0 0 0 4px rgba(201,201,201,.25);
+    }
+    .dot.on{
+      background:#34c759;
+      box-shadow: 0 0 0 4px rgba(52,199,89,.25);
+    }
+
+    #row{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:16px;
+      align-items:start;
+    }
+
+    .card{
+      padding:14px;
+      border:1px solid var(--stroke);
+      border-radius:16px;
+      background: var(--card);
+      box-shadow: 0 10px 26px rgba(0,0,0,.08);
+      backdrop-filter: blur(6px);
+    }
+
+    .controls{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      margin: 10px 0 12px;
+      flex-wrap:wrap;
+    }
+
+    button{
+      padding:10px 14px;
+      border-radius:14px;
+      border:1px solid var(--stroke);
+      background: linear-gradient(180deg, #ffffff 0%, #f4fff0 100%);
+      cursor:pointer;
+      color:var(--text);
+      font-weight:600;
+      box-shadow: 0 10px 20px rgba(47,122,61,.10);
+      transition: transform .08s ease, box-shadow .08s ease;
+    }
+    button:hover{ transform: translateY(-1px); box-shadow: 0 14px 24px rgba(47,122,61,.14); }
+    button:disabled{ opacity:.6; cursor:not-allowed; transform:none; box-shadow:none; }
+
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .hint{
+      margin-top:8px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.35;
+    }
+
+    #angles{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:8px;
+    }
+    .angleRow{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding:10px 12px;
+      border:1px dashed #cfe1c7;
+      border-radius:14px;
+      background: rgba(255,255,255,.55);
+    }
+    .angleLabel{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:700;
+    }
+    .leaf{
+      width:22px;height:22px;border-radius:8px;
+      display:grid;place-items:center;
+      background: linear-gradient(180deg, #e9ffe6 0%, #d7f6d0 100%);
+      border:1px solid #cfe8c9;
+    }
+
+    #threeWrap{
+      height: 420px;
+      border:1px solid var(--stroke);
+      border-radius:16px;
+      overflow:hidden;
+      background:
+        radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,.9), rgba(255,255,255,.35)),
+        linear-gradient(180deg, #e6f7ff 0%, #fffaf0 70%);
+      position:relative;
+    }
+    .threeLabel{
+      position:absolute;
+      left:12px; top:12px;
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,.72);
+      font-size:13px;
+      color:var(--muted);
+      box-shadow: 0 10px 20px rgba(0,0,0,.08);
+    }
+
+    @media (max-width: 920px){
+      #row{ grid-template-columns: 1fr; }
+      #threeWrap{ height: 360px; }
+    }
   </style>
 </head>
+
 <body>
-  <h2>ADXL335 Inclination Angles (Part 4)</h2>
+  <header>
+    <div class="titleWrap">
+      <h2>ADXL335 Tractor Tilt Dashboard 🚜🌾</h2>
+      <div class="subtitle">
+        Cute ag-themed viewer for <span class="mono">angleX,angleY,angleZ</span> streamed over Serial at <span class="mono">115200</span>.
+        (Use MODE 4 in your Arduino sketch.)
+      </div>
+    </div>
+    <div class="badge">
+      <span id="connDot" class="dot"></span>
+      <span id="status" class="mono">disconnected</span>
+    </div>
+  </header>
 
-  <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+  <div class="controls">
     <button id="connectBtn">Connect Serial</button>
-    <span id="status" class="mono">disconnected</span>
+    <div class="hint">Tip: close Arduino Serial Monitor/Plotter before connecting here.</div>
   </div>
 
-  <div class="hint">
-    Arduino should stream lines like <span class="mono">angleX,angleY,angleZ</span> at 115200 baud.
-    (Use MODE 4 in the Arduino sketch.)
-  </div>
-
-  <div id="row" style="margin-top:12px;">
-    <div>
+  <div id="row">
+    <div class="card">
       <div id="angles">
-        <div class="mono">AngleX: <span id="ax">—</span>°</div>
-        <div class="mono">AngleY: <span id="ay">—</span>°</div>
-        <div class="mono">AngleZ: <span id="az">—</span>°</div>
+        <div class="angleRow">
+          <div class="angleLabel"><span class="leaf">🌱</span>AngleX</div>
+          <div class="mono"><span id="ax">—</span>°</div>
+        </div>
+        <div class="angleRow">
+          <div class="angleLabel"><span class="leaf">🌾</span>AngleY</div>
+          <div class="mono"><span id="ay">—</span>°</div>
+        </div>
+        <div class="angleRow">
+          <div class="angleLabel"><span class="leaf">🍂</span>AngleZ</div>
+          <div class="mono"><span id="az">—</span>°</div>
+        </div>
       </div>
 
       <canvas id="chart" height="220" style="margin-top:16px;"></canvas>
     </div>
 
-    <div id="threeWrap"></div>
+    <div id="threeWrap">
+      <div class="threeLabel">tractor orientation (3D)</div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -66,6 +241,7 @@
       options: {
         animation: false,
         responsive: true,
+        plugins: { legend: { labels: { boxWidth: 14 } } },
         scales: { x: { display: false }, y: { title: { display: true, text: 'degrees' } } }
       }
     });
@@ -82,23 +258,134 @@
     // ---------- Three.js ----------
     const wrap = document.getElementById('threeWrap');
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
-    camera.position.set(0, 0, 6);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Sky + ground colors feel farm-y
+    scene.background = new THREE.Color(0xf2fbff);
+
+    const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+    camera.position.set(0, 2.2, 7);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(wrap.clientWidth, wrap.clientHeight);
     wrap.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(3, 5, 4);
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const light = new THREE.DirectionalLight(0xffffff, 1.0);
+    light.position.set(4, 6, 5);
     scene.add(light);
 
-    const cube = new THREE.Mesh(
-      new THREE.BoxGeometry(2, 1, 0.5),
-      new THREE.MeshStandardMaterial()
+    // Ground plane (simple "field")
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshStandardMaterial({ color: 0xc8f2b7, roughness: 1.0, metalness: 0.0 })
     );
-    scene.add(cube);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -1.2;
+    scene.add(ground);
+
+    // Helper: build a cute low-poly tractor from basic shapes
+    const tractor = new THREE.Group();
+
+    // Body (main chassis)
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.7, 1.1),
+      new THREE.MeshStandardMaterial({ color: 0x2f7a3d, roughness: 0.8, metalness: 0.1 })
+    );
+    body.position.set(0, 0, 0);
+    tractor.add(body);
+
+    // Hood (front)
+    const hood = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.55, 1.05),
+      new THREE.MeshStandardMaterial({ color: 0x3a8f4a, roughness: 0.8, metalness: 0.1 })
+    );
+    hood.position.set(1.35, 0.05, 0);
+    tractor.add(hood);
+
+    // Cab base
+    const cabBase = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 0.55, 0.95),
+      new THREE.MeshStandardMaterial({ color: 0xf2b84b, roughness: 0.75, metalness: 0.05 })
+    );
+    cabBase.position.set(-0.4, 0.55, 0);
+    tractor.add(cabBase);
+
+    // Cab window (front)
+    const cabWin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.75, 0.38, 0.02),
+      new THREE.MeshStandardMaterial({ color: 0xa9d8ff, roughness: 0.2, metalness: 0.0, transparent: true, opacity: 0.85 })
+    );
+    cabWin.position.set(-0.4, 0.62, 0.49);
+    tractor.add(cabWin);
+
+    // Exhaust pipe
+    const exhaust = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.8, 18),
+      new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9, metalness: 0.2 })
+    );
+    exhaust.position.set(1.7, 0.55, -0.35);
+    tractor.add(exhaust);
+
+    // Headlights
+    const headL = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0xfff3c9, roughness: 0.3, metalness: 0.0, emissive: 0xfff0b3, emissiveIntensity: 0.35 })
+    );
+    headL.position.set(1.9, 0.15, 0.35);
+    tractor.add(headL);
+
+    const headR = headL.clone();
+    headR.position.z = -0.35;
+    tractor.add(headR);
+
+    // Wheels helper
+    function makeWheel(r, w, color){
+      const geom = new THREE.CylinderGeometry(r, r, w, 26);
+      const mat  = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.05 });
+      const wheel = new THREE.Mesh(geom, mat);
+      wheel.rotation.z = Math.PI / 2;
+      return wheel;
+    }
+
+    // Rear wheels (bigger)
+    const rearL = makeWheel(0.55, 0.25, 0x2d2d2d);
+    rearL.position.set(-0.9, -0.25, 0.55);
+    tractor.add(rearL);
+
+    const rearR = rearL.clone();
+    rearR.position.z = -0.55;
+    tractor.add(rearR);
+
+    // Front wheels (smaller)
+    const frontL = makeWheel(0.35, 0.22, 0x333333);
+    frontL.position.set(1.55, -0.33, 0.55);
+    tractor.add(frontL);
+
+    const frontR = frontL.clone();
+    frontR.position.z = -0.55;
+    tractor.add(frontR);
+
+    // Cute "smile" bumper
+    const bumper = new THREE.Mesh(
+      new THREE.TorusGeometry(0.25, 0.05, 12, 24, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0x6b3f1d, roughness: 0.9, metalness: 0.0 })
+    );
+    bumper.rotation.z = Math.PI;
+    bumper.position.set(1.9, -0.05, 0);
+    tractor.add(bumper);
+
+    // Lift tractor above ground a bit
+    tractor.position.y = 0.1;
+    scene.add(tractor);
+
+    // A tiny fence post for cuteness / reference
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 1.1, 0.15),
+      new THREE.MeshStandardMaterial({ color: 0x8a5a2b, roughness: 1.0, metalness: 0.0 })
+    );
+    post.position.set(-3.2, -0.65, -1.2);
+    scene.add(post);
 
     function render() {
       renderer.render(scene, camera);
@@ -113,15 +400,18 @@
       renderer.setSize(w, h);
     });
 
-    function setCubeAngles(axDeg, ayDeg, azDeg) {
-      cube.rotation.x = THREE.MathUtils.degToRad(axDeg);
-      cube.rotation.y = THREE.MathUtils.degToRad(ayDeg);
-      cube.rotation.z = THREE.MathUtils.degToRad(azDeg);
+    // Map angles to tractor rotation.
+    // If your real motion feels "swapped", swap axes or flip signs here.
+    function setTractorAngles(axDeg, ayDeg, azDeg) {
+      tractor.rotation.x = THREE.MathUtils.degToRad(axDeg);
+      tractor.rotation.y = THREE.MathUtils.degToRad(ayDeg);
+      tractor.rotation.z = THREE.MathUtils.degToRad(azDeg);
     }
 
     // ---------- Web Serial ----------
     const connectBtn = document.getElementById('connectBtn');
     const statusEl = document.getElementById('status');
+    const connDot = document.getElementById('connDot');
     const axEl = document.getElementById('ax');
     const ayEl = document.getElementById('ay');
     const azEl = document.getElementById('az');
@@ -132,10 +422,11 @@
         return;
       }
 
-      // IMPORTANT: close Arduino Serial Monitor/Plotter before connecting here.
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200 });
+
       statusEl.textContent = 'connected';
+      connDot.classList.add('on');
       connectBtn.disabled = true;
 
       const textDecoder = new TextDecoderStream();
@@ -169,7 +460,7 @@
             azEl.textContent = az.toFixed(2);
 
             pushPoint(ax, ay, az);
-            setCubeAngles(ax, ay, az);
+            setTractorAngles(ax, ay, az);
           }
         }
       } catch (e) {
@@ -177,6 +468,7 @@
         alert('Serial error. Check Console (F12) for details.');
       } finally {
         statusEl.textContent = 'disconnected';
+        connDot.classList.remove('on');
         connectBtn.disabled = false;
         try { reader.releaseLock(); } catch {}
         try { await port.close(); } catch {}
