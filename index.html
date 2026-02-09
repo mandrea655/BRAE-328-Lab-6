@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ADXL335 Part 4 (GitHub Pages)</title>
+  <title>ADXL335 Inclination Angles</title>
+
   <style>
     body { font-family: system-ui, Arial; margin: 16px; }
     #row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
@@ -14,8 +15,9 @@
     .hint { color: #666; font-size: 14px; margin-top: 8px; }
   </style>
 </head>
+
 <body>
-  <h2>ADXL335 Inclination Angles (Part 4)</h2>
+  <h2>ADXL335 Inclination Angles</h2>
 
   <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
     <button id="connectBtn">Connect Serial</button>
@@ -23,15 +25,16 @@
   </div>
 
   <div class="hint">
-    Open this page in Chrome/Edge. Your Arduino should stream lines like <span class="mono">angleX,angleY,angleZ</span> at 115200 baud.
+    Arduino output format:
+    <span class="mono">timestamp_us,ax_g,ay_g,az_g</span>
   </div>
 
   <div id="row" style="margin-top:12px;">
     <div>
       <div id="angles">
-        <div class="mono">AngleX: <span id="ax">—</span>°</div>
-        <div class="mono">AngleY: <span id="ay">—</span>°</div>
-        <div class="mono">AngleZ: <span id="az">—</span>°</div>
+        <div class="mono">Angle X: <span id="ax">—</span>°</div>
+        <div class="mono">Angle Y: <span id="ay">—</span>°</div>
+        <div class="mono">Angle Z: <span id="az">—</span>°</div>
       </div>
 
       <canvas id="chart" height="220" style="margin-top:16px;"></canvas>
@@ -46,7 +49,9 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
   <script>
-    // ---------- Chart ----------
+    // =======================
+    // Chart.js
+    // =======================
     const MAX_POINTS = 200;
     const labels = [];
     const dataX = [];
@@ -59,32 +64,48 @@
       data: {
         labels,
         datasets: [
-          { label: 'AngleX (deg)', data: dataX, borderWidth: 1, pointRadius: 0 },
-          { label: 'AngleY (deg)', data: dataY, borderWidth: 1, pointRadius: 0 },
-          { label: 'AngleZ (deg)', data: dataZ, borderWidth: 1, pointRadius: 0 },
+          { label: 'Angle X (deg)', data: dataX, borderWidth: 1, pointRadius: 0 },
+          { label: 'Angle Y (deg)', data: dataY, borderWidth: 1, pointRadius: 0 },
+          { label: 'Angle Z (deg)', data: dataZ, borderWidth: 1, pointRadius: 0 },
         ]
       },
       options: {
         animation: false,
         responsive: true,
-        scales: { x: { display: false }, y: { title: { display: true, text: 'degrees' } } }
+        scales: {
+          x: { display: false },
+          y: { title: { display: true, text: 'degrees' } }
+        }
       }
     });
 
     function pushPoint(ax, ay, az) {
-      labels.push(new Date().toLocaleTimeString());
-      dataX.push(ax); dataY.push(ay); dataZ.push(az);
+      labels.push('');
+      dataX.push(ax);
+      dataY.push(ay);
+      dataZ.push(az);
 
       if (labels.length > MAX_POINTS) {
-        labels.shift(); dataX.shift(); dataY.shift(); dataZ.shift();
+        labels.shift();
+        dataX.shift();
+        dataY.shift();
+        dataZ.shift();
       }
       chart.update('none');
     }
 
-    // ---------- Three.js ----------
+    // =======================
+    // Three.js
+    // =======================
     const wrap = document.getElementById('threeWrap');
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      wrap.clientWidth / wrap.clientHeight,
+      0.1,
+      100
+    );
     camera.position.set(0, 0, 6);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -98,32 +119,33 @@
 
     const cube = new THREE.Mesh(
       new THREE.BoxGeometry(2, 1, 0.5),
-      new THREE.MeshStandardMaterial()
+      new THREE.MeshStandardMaterial({ color: 0x4f83ff })
     );
     scene.add(cube);
 
-    function render() {
+    function animate() {
       renderer.render(scene, camera);
-      requestAnimationFrame(render);
+      requestAnimationFrame(animate);
     }
-    render();
+    animate();
 
     window.addEventListener('resize', () => {
-      const w = wrap.clientWidth, h = wrap.clientHeight;
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     });
 
-    // Apply angles (deg) to cube rotation.
-    // If your orientation looks "wrong", swap axes or flip signs here.
     function setCubeAngles(axDeg, ayDeg, azDeg) {
       cube.rotation.x = THREE.MathUtils.degToRad(axDeg);
       cube.rotation.y = THREE.MathUtils.degToRad(ayDeg);
       cube.rotation.z = THREE.MathUtils.degToRad(azDeg);
     }
 
-    // ---------- Web Serial ----------
+    // =======================
+    // Web Serial
+    // =======================
     const connectBtn = document.getElementById('connectBtn');
     const statusEl = document.getElementById('status');
     const axEl = document.getElementById('ax');
@@ -132,26 +154,29 @@
 
     async function connectSerial() {
       if (!('serial' in navigator)) {
-        alert('Web Serial is not supported here. Use Chrome/Edge on desktop.');
+        alert('Web Serial not supported. Use Chrome or Edge.');
         return;
       }
 
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200 });
+
       statusEl.textContent = 'connected';
       connectBtn.disabled = true;
 
-      const textDecoder = new TextDecoderStream();
-      const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-      const reader = textDecoder.readable.getReader();
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      const reader = decoder.readable.getReader();
 
       let buffer = '';
+      const rad2deg = 180 / Math.PI;
+
       try {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          buffer += value;
 
+          buffer += value;
           const lines = buffer.split('\n');
           buffer = lines.pop();
 
@@ -160,19 +185,25 @@
             if (!s) continue;
 
             const parts = s.split(',');
-            if (parts.length !== 3) continue;
+            if (parts.length !== 4) continue;
 
-            const ax = parseFloat(parts[0]);
-            const ay = parseFloat(parts[1]);
-            const az = parseFloat(parts[2]);
+            const ax = parseFloat(parts[1]);
+            const ay = parseFloat(parts[2]);
+            const az = parseFloat(parts[3]);
+
             if (![ax, ay, az].every(Number.isFinite)) continue;
 
-            axEl.textContent = ax.toFixed(2);
-            ayEl.textContent = ay.toFixed(2);
-            azEl.textContent = az.toFixed(2);
+            // Acceleration (g) -> tilt angles (deg)
+            const angleX = Math.atan2(ax, Math.sqrt(ay*ay + az*az)) * rad2deg;
+            const angleY = Math.atan2(ay, Math.sqrt(ax*ax + az*az)) * rad2deg;
+            const angleZ = Math.atan2(az, Math.sqrt(ax*ax + ay*ay)) * rad2deg;
 
-            pushPoint(ax, ay, az);
-            setCubeAngles(ax, ay, az);
+            axEl.textContent = angleX.toFixed(2);
+            ayEl.textContent = angleY.toFixed(2);
+            azEl.textContent = angleZ.toFixed(2);
+
+            pushPoint(angleX, angleY, angleZ);
+            setCubeAngles(angleX, angleY, angleZ);
           }
         }
       } catch (e) {
@@ -189,4 +220,3 @@
   </script>
 </body>
 </html>
-
