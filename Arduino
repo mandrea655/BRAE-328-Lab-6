@@ -1,0 +1,216 @@
+// Part 1: ADXL335 vibration measurement (1 ms sample)
+// Serial Plotter friendly: prints "Ax Ay Az" (space-separated)
+
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+
+const float VREF = 5.0;       // Arduino UNO default analog reference
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;             // nominal 0g voltage (adjust if needed)
+const float SENS = 0.33;      // 330 mV/g => 0.33 V/g  :contentReference[oaicite:2]{index=2}
+
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  int ax_adc = analogRead(PIN_X);
+  int ay_adc = analogRead(PIN_Y);
+  int az_adc = analogRead(PIN_Z);
+
+  float ax = adcToG(ax_adc);
+  float ay = adcToG(ay_adc);
+  float az = adcToG(az_adc);
+
+  // For Serial Plotter (Tools -> Serial Plotter)
+  Serial.print(ax, 3); Serial.print(' ');
+  Serial.print(ay, 3); Serial.print(' ');
+  Serial.println(az, 3);
+
+  delayMicroseconds(1000); // 1 ms
+}
+
+// Part 2 (if/else): Collision detection with ADXL335
+// If any axis exceeds ±2.8 g, blink onboard LED (pin 13) for 3 seconds.
+
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+const int LED_PIN = LED_BUILTIN;
+
+const float VREF = 5.0;
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;        // adjust if your measured 0g differs
+const float SENS = 0.33; // V/g
+
+const float THRESH_G = 2.8;
+
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+
+static inline float absf(float x) { return x < 0 ? -x : x; }
+
+void blinkFor3s() {
+  unsigned long start = millis();
+  while (millis() - start < 3000UL) {
+    digitalWrite(LED_PIN, HIGH); delay(100);
+    digitalWrite(LED_PIN, LOW);  delay(100);
+  }
+}
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  float ax = adcToG(analogRead(PIN_X));
+  float ay = adcToG(analogRead(PIN_Y));
+  float az = adcToG(analogRead(PIN_Z));
+
+  bool collision = (absf(ax) > THRESH_G) || (absf(ay) > THRESH_G) || (absf(az) > THRESH_G);
+
+  if (collision) {
+    blinkFor3s();
+  } else {
+    // do nothing
+  }
+
+  // optional debug print
+  Serial.print(ax, 3); Serial.print(' ');
+  Serial.print(ay, 3); Serial.print(' ');
+  Serial.println(az, 3);
+
+  delayMicroseconds(2000); // 2 ms
+}
+
+// Part 2 (while): Same behavior, but structured around a while loop.
+// When collision is detected, stay in "alert mode" for 3 seconds while blinking.
+
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+const int LED_PIN = LED_BUILTIN;
+
+const float VREF = 5.0;
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;
+const float SENS = 0.33;
+
+const float THRESH_G = 2.8;
+
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+
+static inline float absf(float x) { return x < 0 ? -x : x; }
+
+static inline bool isCollision(float ax, float ay, float az) {
+  return (absf(ax) > THRESH_G) || (absf(ay) > THRESH_G) || (absf(az) > THRESH_G);
+}
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  float ax = adcToG(analogRead(PIN_X));
+  float ay = adcToG(analogRead(PIN_Y));
+  float az = adcToG(analogRead(PIN_Z));
+
+  if (isCollision(ax, ay, az)) {
+    unsigned long start = millis();
+    while (millis() - start < 3000UL) {
+      digitalWrite(LED_PIN, HIGH); delay(100);
+      digitalWrite(LED_PIN, LOW);  delay(100);
+    }
+  }
+
+  delayMicroseconds(2000); // 2 ms
+}
+
+// Part 3: Inclination angle measurement (prints angles every 100 ms)
+
+#include <math.h>
+
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+
+const float VREF = 5.0;
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;        // adjust if needed
+const float SENS = 0.33; // V/g
+
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  float ax = adcToG(analogRead(PIN_X));
+  float ay = adcToG(analogRead(PIN_Y));
+  float az = adcToG(analogRead(PIN_Z));
+
+  // Use atan2(), sqrt(), pow() per lab hint :contentReference[oaicite:5]{index=5}
+  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+
+  // Print CSV: easier for web app parsing
+  Serial.print(angleX, 2); Serial.print(',');
+  Serial.print(angleY, 2); Serial.print(',');
+  Serial.println(angleZ, 2);
+
+  delay(100); // 100 ms
+}
+
+#include <math.h>
+
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+
+const float VREF = 5.0;
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;        // adjust if needed
+const float SENS = 0.33; // V/g (330 mV/g)
+
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  float ax = adcToG(analogRead(PIN_X));
+  float ay = adcToG(analogRead(PIN_Y));
+  float az = adcToG(analogRead(PIN_Z));
+
+  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+
+  Serial.print(angleX, 2); Serial.print(',');
+  Serial.print(angleY, 2); Serial.print(',');
+  Serial.println(angleZ, 2);
+
+  delay(100);
+}
