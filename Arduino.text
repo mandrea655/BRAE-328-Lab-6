@@ -1,222 +1,134 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ADXL335 Inclination Angles</title>
+/*
+  ADXL335 Lab - Single Sketch with MODE switch
+  Modes:
+    1 = Part 1: Vibration (prints Ax Ay Az in g) every 1 ms (Serial Plotter friendly)
+    2 = Part 2a: Collision detect (if/else) sample every 2 ms, blink LED for 3 s on hit
+    3 = Part 2b: Collision detect (while) sample every 2 ms, blink LED for 3 s on hit
+    4 = Part 3/4: Angles (prints angleX,angleY,angleZ CSV) every 100 ms (for GitHub page)
 
-  <style>
-    body { font-family: system-ui, Arial; margin: 16px; }
-    #row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-    #angles { padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
-    #threeWrap { height: 420px; border: 1px solid #ddd; border-radius: 10px; overflow: hidden; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .hint { color: #666; font-size: 14px; margin-top: 8px; }
-  </style>
-</head>
+  How to change MODE:
+    - In Serial Monitor, set "No line ending"
+    - Send a single digit: 1,2,3,4 then press Send
+*/
 
-<body>
-  <h2>ADXL335 Inclination Angles</h2>
+#include <math.h>
 
-  <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
-    <button id="connectBtn">Connect Serial</button>
-    <span id="status" class="mono">disconnected</span>
-  </div>
+// ---------- Pins ----------
+const int PIN_X = A0;
+const int PIN_Y = A1;
+const int PIN_Z = A2;
+const int LED_PIN = LED_BUILTIN;
 
-  <div class="hint">
-    Arduino output format:
-    <span class="mono">timestamp_us,ax_g,ay_g,az_g</span>
-  </div>
+// ---------- Accelerometer constants ----------
+const float VREF = 5.0;         // UNO default analog reference
+const float ADC_MAX = 1023.0;
+float V0G = 1.65;               // nominal 0g voltage
+const float SENS = 0.33;        // V/g (330 mV/g)
 
-  <div id="row" style="margin-top:12px;">
-    <div>
-      <div id="angles">
-        <div class="mono">Angle X: <span id="ax">—</span>°</div>
-        <div class="mono">Angle Y: <span id="ay">—</span>°</div>
-        <div class="mono">Angle Z: <span id="az">—</span>°</div>
-      </div>
+// ---------- Part 2 threshold ----------
+const float THRESH_G = 2.8;
 
-      <canvas id="chart" height="220" style="margin-top:16px;"></canvas>
-    </div>
+// ---------- Mode ----------
+volatile int MODE = 4;          // default to angles for Part 4
 
-    <div id="threeWrap"></div>
-  </div>
+// ---------- Helpers ----------
+static inline float adcToG(int adc) {
+  float v = (adc * VREF) / ADC_MAX;
+  return (v - V0G) / SENS;
+}
+static inline float absf(float x) { return x < 0 ? -x : x; }
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Three.js -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+static inline void blinkForMs(unsigned long durationMs) {
+  unsigned long start = millis();
+  while (millis() - start < durationMs) {
+    digitalWrite(LED_PIN, HIGH); delay(100);
+    digitalWrite(LED_PIN, LOW);  delay(100);
+  }
+}
 
-  <script>
-    // =======================
-    // Chart.js
-    // =======================
-    const MAX_POINTS = 200;
-    const labels = [];
-    const dataX = [];
-    const dataY = [];
-    const dataZ = [];
+static inline bool collisionDetected(float ax, float ay, float az) {
+  return (absf(ax) > THRESH_G) || (absf(ay) > THRESH_G) || (absf(az) > THRESH_G);
+}
 
-    const ctx = document.getElementById('chart').getContext('2d');
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { label: 'Angle X (deg)', data: dataX, borderWidth: 1, pointRadius: 0 },
-          { label: 'Angle Y (deg)', data: dataY, borderWidth: 1, pointRadius: 0 },
-          { label: 'Angle Z (deg)', data: dataZ, borderWidth: 1, pointRadius: 0 },
-        ]
-      },
-      options: {
-        animation: false,
-        responsive: true,
-        scales: {
-          x: { display: false },
-          y: { title: { display: true, text: 'degrees' } }
-        }
-      }
-    });
-
-    function pushPoint(ax, ay, az) {
-      labels.push('');
-      dataX.push(ax);
-      dataY.push(ay);
-      dataZ.push(az);
-
-      if (labels.length > MAX_POINTS) {
-        labels.shift();
-        dataX.shift();
-        dataY.shift();
-        dataZ.shift();
-      }
-      chart.update('none');
+void readModeFromSerial() {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c >= '1' && c <= '4') {
+      MODE = c - '0';
+      Serial.print("MODE set to ");
+      Serial.println(MODE);
     }
+  }
+}
 
-    // =======================
-    // Three.js
-    // =======================
-    const wrap = document.getElementById('threeWrap');
-    const scene = new THREE.Scene();
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  Serial.begin(115200);
 
-    const camera = new THREE.PerspectiveCamera(
-      45,
-      wrap.clientWidth / wrap.clientHeight,
-      0.1,
-      100
-    );
-    camera.position.set(0, 0, 6);
+  Serial.println("ADXL335 Lab Single Sketch");
+  Serial.println("Send 1,2,3,4 in Serial Monitor to change mode.");
+  Serial.println("1=Vibration(g)  2=Collision(if)  3=Collision(while)  4=Angles(CSV)");
+}
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
-    wrap.appendChild(renderer.domElement);
+void loop() {
+  readModeFromSerial();
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(3, 5, 4);
-    scene.add(light);
+  // Read raw once per loop (each mode controls its own timing)
+  int ax_adc = analogRead(PIN_X);
+  int ay_adc = analogRead(PIN_Y);
+  int az_adc = analogRead(PIN_Z);
 
-    const cube = new THREE.Mesh(
-      new THREE.BoxGeometry(2, 1, 0.5),
-      new THREE.MeshStandardMaterial({ color: 0x4f83ff })
-    );
-    scene.add(cube);
+  float ax = adcToG(ax_adc);
+  float ay = adcToG(ay_adc);
+  float az = adcToG(az_adc);
 
-    function animate() {
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
+  if (MODE == 1) {
+    // Part 1: vibration measurement (Serial Plotter)
+    Serial.print(ax, 3); Serial.print(' ');
+    Serial.print(ay, 3); Serial.print(' ');
+    Serial.println(az, 3);
+    delayMicroseconds(1000); // 1 ms
+    return;
+  }
+
+  if (MODE == 2) {
+    // Part 2a: collision detection using if/else
+    bool hit = collisionDetected(ax, ay, az);
+    if (hit) {
+      blinkForMs(3000);
+    } else {
+      // do nothing
     }
-    animate();
+    // optional debug output
+    Serial.print(ax, 3); Serial.print(' ');
+    Serial.print(ay, 3); Serial.print(' ');
+    Serial.println(az, 3);
+    delayMicroseconds(2000); // 2 ms
+    return;
+  }
 
-    window.addEventListener('resize', () => {
-      const w = wrap.clientWidth;
-      const h = wrap.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-    });
-
-    function setCubeAngles(axDeg, ayDeg, azDeg) {
-      cube.rotation.x = THREE.MathUtils.degToRad(axDeg);
-      cube.rotation.y = THREE.MathUtils.degToRad(ayDeg);
-      cube.rotation.z = THREE.MathUtils.degToRad(azDeg);
-    }
-
-    // =======================
-    // Web Serial
-    // =======================
-    const connectBtn = document.getElementById('connectBtn');
-    const statusEl = document.getElementById('status');
-    const axEl = document.getElementById('ax');
-    const ayEl = document.getElementById('ay');
-    const azEl = document.getElementById('az');
-
-    async function connectSerial() {
-      if (!('serial' in navigator)) {
-        alert('Web Serial not supported. Use Chrome or Edge.');
-        return;
-      }
-
-      const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 115200 });
-
-      statusEl.textContent = 'connected';
-      connectBtn.disabled = true;
-
-      const decoder = new TextDecoderStream();
-      port.readable.pipeTo(decoder.writable);
-      const reader = decoder.readable.getReader();
-
-      let buffer = '';
-      const rad2deg = 180 / Math.PI;
-
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += value;
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
-
-          for (const line of lines) {
-            const s = line.trim();
-            if (!s) continue;
-
-            const parts = s.split(',');
-            if (parts.length !== 4) continue;
-
-            const ax = parseFloat(parts[1]);
-            const ay = parseFloat(parts[2]);
-            const az = parseFloat(parts[3]);
-
-            if (![ax, ay, az].every(Number.isFinite)) continue;
-
-            // Acceleration (g) -> tilt angles (deg)
-            const angleX = Math.atan2(ax, Math.sqrt(ay*ay + az*az)) * rad2deg;
-            const angleY = Math.atan2(ay, Math.sqrt(ax*ax + az*az)) * rad2deg;
-            const angleZ = Math.atan2(az, Math.sqrt(ax*ax + ay*ay)) * rad2deg;
-
-            axEl.textContent = angleX.toFixed(2);
-            ayEl.textContent = angleY.toFixed(2);
-            azEl.textContent = angleZ.toFixed(2);
-
-            pushPoint(angleX, angleY, angleZ);
-            setCubeAngles(angleX, angleY, angleZ);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        statusEl.textContent = 'disconnected';
-        connectBtn.disabled = false;
-        try { reader.releaseLock(); } catch {}
-        try { await port.close(); } catch {}
+  if (MODE == 3) {
+    // Part 2b: collision detection using while
+    if (collisionDetected(ax, ay, az)) {
+      unsigned long start = millis();
+      while (millis() - start < 3000UL) {
+        digitalWrite(LED_PIN, HIGH); delay(100);
+        digitalWrite(LED_PIN, LOW);  delay(100);
       }
     }
+    delayMicroseconds(2000); // 2 ms
+    return;
+  }
 
-    connectBtn.addEventListener('click', connectSerial);
-  </script>
-</body>
-</html>
+  // MODE == 4 (default): Part 3/4 angles (CSV for GitHub page)
+  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
+  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+
+  // CSV only: angleX,angleY,angleZ
+  Serial.print(angleX, 2); Serial.print(',');
+  Serial.print(angleY, 2); Serial.print(',');
+  Serial.println(angleZ, 2);
+
+  delay(100); // 100 ms
+}
