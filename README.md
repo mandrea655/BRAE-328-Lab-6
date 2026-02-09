@@ -1,4 +1,4 @@
-# ADXL335 Part 4 – GitHub Pages
+# BRAE-328-Lab-6 – GitHub Pages
 
 ## What it does
 - Shows AngleX, AngleY, AngleZ (degrees) from the Arduino
