@@ -23,7 +23,8 @@
   </div>
 
   <div class="hint">
-    Open this page in Chrome/Edge. Your Arduino should stream lines like <span class="mono">angleX,angleY,angleZ</span> at 115200 baud.
+    Arduino should stream lines like <span class="mono">angleX,angleY,angleZ</span> at 115200 baud.
+    (Use MODE 4 in the Arduino sketch.)
   </div>
 
   <div id="row" style="margin-top:12px;">
@@ -40,9 +41,7 @@
     <div id="threeWrap"></div>
   </div>
 
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- Three.js -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
   <script>
@@ -74,7 +73,6 @@
     function pushPoint(ax, ay, az) {
       labels.push(new Date().toLocaleTimeString());
       dataX.push(ax); dataY.push(ay); dataZ.push(az);
-
       if (labels.length > MAX_POINTS) {
         labels.shift(); dataX.shift(); dataY.shift(); dataZ.shift();
       }
@@ -115,8 +113,6 @@
       renderer.setSize(w, h);
     });
 
-    // Apply angles (deg) to cube rotation.
-    // If your orientation looks "wrong", swap axes or flip signs here.
     function setCubeAngles(axDeg, ayDeg, azDeg) {
       cube.rotation.x = THREE.MathUtils.degToRad(axDeg);
       cube.rotation.y = THREE.MathUtils.degToRad(ayDeg);
@@ -132,17 +128,18 @@
 
     async function connectSerial() {
       if (!('serial' in navigator)) {
-        alert('Web Serial is not supported here. Use Chrome/Edge on desktop.');
+        alert('Web Serial not supported. Use Chrome/Edge desktop.');
         return;
       }
 
+      // IMPORTANT: close Arduino Serial Monitor/Plotter before connecting here.
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200 });
       statusEl.textContent = 'connected';
       connectBtn.disabled = true;
 
       const textDecoder = new TextDecoderStream();
-      const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+      port.readable.pipeTo(textDecoder.writable);
       const reader = textDecoder.readable.getReader();
 
       let buffer = '';
@@ -177,6 +174,7 @@
         }
       } catch (e) {
         console.error(e);
+        alert('Serial error. Check Console (F12) for details.');
       } finally {
         statusEl.textContent = 'disconnected';
         connectBtn.disabled = false;
