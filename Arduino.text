@@ -1,216 +1,222 @@
-// Part 1: ADXL335 vibration measurement (1 ms sample)
-// Serial Plotter friendly: prints "Ax Ay Az" (space-separated)
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ADXL335 Inclination Angles</title>
 
-const int PIN_X = A0;
-const int PIN_Y = A1;
-const int PIN_Z = A2;
+  <style>
+    body { font-family: system-ui, Arial; margin: 16px; }
+    #row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    #angles { padding: 12px; border: 1px solid #ddd; border-radius: 10px; }
+    #threeWrap { height: 420px; border: 1px solid #ddd; border-radius: 10px; overflow: hidden; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .hint { color: #666; font-size: 14px; margin-top: 8px; }
+  </style>
+</head>
 
-const float VREF = 5.0;       // Arduino UNO default analog reference
-const float ADC_MAX = 1023.0;
-float V0G = 1.65;             // nominal 0g voltage (adjust if needed)
-const float SENS = 0.33;      // 330 mV/g => 0.33 V/g  :contentReference[oaicite:2]{index=2}
+<body>
+  <h2>ADXL335 Inclination Angles</h2>
 
-static inline float adcToG(int adc) {
-  float v = (adc * VREF) / ADC_MAX;
-  return (v - V0G) / SENS;
-}
+  <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+    <button id="connectBtn">Connect Serial</button>
+    <span id="status" class="mono">disconnected</span>
+  </div>
 
-void setup() {
-  Serial.begin(115200);
-}
+  <div class="hint">
+    Arduino output format:
+    <span class="mono">timestamp_us,ax_g,ay_g,az_g</span>
+  </div>
 
-void loop() {
-  int ax_adc = analogRead(PIN_X);
-  int ay_adc = analogRead(PIN_Y);
-  int az_adc = analogRead(PIN_Z);
+  <div id="row" style="margin-top:12px;">
+    <div>
+      <div id="angles">
+        <div class="mono">Angle X: <span id="ax">—</span>°</div>
+        <div class="mono">Angle Y: <span id="ay">—</span>°</div>
+        <div class="mono">Angle Z: <span id="az">—</span>°</div>
+      </div>
 
-  float ax = adcToG(ax_adc);
-  float ay = adcToG(ay_adc);
-  float az = adcToG(az_adc);
+      <canvas id="chart" height="220" style="margin-top:16px;"></canvas>
+    </div>
 
-  // For Serial Plotter (Tools -> Serial Plotter)
-  Serial.print(ax, 3); Serial.print(' ');
-  Serial.print(ay, 3); Serial.print(' ');
-  Serial.println(az, 3);
+    <div id="threeWrap"></div>
+  </div>
 
-  delayMicroseconds(1000); // 1 ms
-}
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Three.js -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
-// Part 2 (if/else): Collision detection with ADXL335
-// If any axis exceeds ±2.8 g, blink onboard LED (pin 13) for 3 seconds.
+  <script>
+    // =======================
+    // Chart.js
+    // =======================
+    const MAX_POINTS = 200;
+    const labels = [];
+    const dataX = [];
+    const dataY = [];
+    const dataZ = [];
 
-const int PIN_X = A0;
-const int PIN_Y = A1;
-const int PIN_Z = A2;
-const int LED_PIN = LED_BUILTIN;
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Angle X (deg)', data: dataX, borderWidth: 1, pointRadius: 0 },
+          { label: 'Angle Y (deg)', data: dataY, borderWidth: 1, pointRadius: 0 },
+          { label: 'Angle Z (deg)', data: dataZ, borderWidth: 1, pointRadius: 0 },
+        ]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          x: { display: false },
+          y: { title: { display: true, text: 'degrees' } }
+        }
+      }
+    });
 
-const float VREF = 5.0;
-const float ADC_MAX = 1023.0;
-float V0G = 1.65;        // adjust if your measured 0g differs
-const float SENS = 0.33; // V/g
+    function pushPoint(ax, ay, az) {
+      labels.push('');
+      dataX.push(ax);
+      dataY.push(ay);
+      dataZ.push(az);
 
-const float THRESH_G = 2.8;
-
-static inline float adcToG(int adc) {
-  float v = (adc * VREF) / ADC_MAX;
-  return (v - V0G) / SENS;
-}
-
-static inline float absf(float x) { return x < 0 ? -x : x; }
-
-void blinkFor3s() {
-  unsigned long start = millis();
-  while (millis() - start < 3000UL) {
-    digitalWrite(LED_PIN, HIGH); delay(100);
-    digitalWrite(LED_PIN, LOW);  delay(100);
-  }
-}
-
-void setup() {
-  pinMode(LED_PIN, OUTPUT);
-  Serial.begin(115200);
-}
-
-void loop() {
-  float ax = adcToG(analogRead(PIN_X));
-  float ay = adcToG(analogRead(PIN_Y));
-  float az = adcToG(analogRead(PIN_Z));
-
-  bool collision = (absf(ax) > THRESH_G) || (absf(ay) > THRESH_G) || (absf(az) > THRESH_G);
-
-  if (collision) {
-    blinkFor3s();
-  } else {
-    // do nothing
-  }
-
-  // optional debug print
-  Serial.print(ax, 3); Serial.print(' ');
-  Serial.print(ay, 3); Serial.print(' ');
-  Serial.println(az, 3);
-
-  delayMicroseconds(2000); // 2 ms
-}
-
-// Part 2 (while): Same behavior, but structured around a while loop.
-// When collision is detected, stay in "alert mode" for 3 seconds while blinking.
-
-const int PIN_X = A0;
-const int PIN_Y = A1;
-const int PIN_Z = A2;
-const int LED_PIN = LED_BUILTIN;
-
-const float VREF = 5.0;
-const float ADC_MAX = 1023.0;
-float V0G = 1.65;
-const float SENS = 0.33;
-
-const float THRESH_G = 2.8;
-
-static inline float adcToG(int adc) {
-  float v = (adc * VREF) / ADC_MAX;
-  return (v - V0G) / SENS;
-}
-
-static inline float absf(float x) { return x < 0 ? -x : x; }
-
-static inline bool isCollision(float ax, float ay, float az) {
-  return (absf(ax) > THRESH_G) || (absf(ay) > THRESH_G) || (absf(az) > THRESH_G);
-}
-
-void setup() {
-  pinMode(LED_PIN, OUTPUT);
-  Serial.begin(115200);
-}
-
-void loop() {
-  float ax = adcToG(analogRead(PIN_X));
-  float ay = adcToG(analogRead(PIN_Y));
-  float az = adcToG(analogRead(PIN_Z));
-
-  if (isCollision(ax, ay, az)) {
-    unsigned long start = millis();
-    while (millis() - start < 3000UL) {
-      digitalWrite(LED_PIN, HIGH); delay(100);
-      digitalWrite(LED_PIN, LOW);  delay(100);
+      if (labels.length > MAX_POINTS) {
+        labels.shift();
+        dataX.shift();
+        dataY.shift();
+        dataZ.shift();
+      }
+      chart.update('none');
     }
-  }
 
-  delayMicroseconds(2000); // 2 ms
-}
+    // =======================
+    // Three.js
+    // =======================
+    const wrap = document.getElementById('threeWrap');
+    const scene = new THREE.Scene();
 
-// Part 3: Inclination angle measurement (prints angles every 100 ms)
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      wrap.clientWidth / wrap.clientHeight,
+      0.1,
+      100
+    );
+    camera.position.set(0, 0, 6);
 
-#include <math.h>
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+    wrap.appendChild(renderer.domElement);
 
-const int PIN_X = A0;
-const int PIN_Y = A1;
-const int PIN_Z = A2;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(3, 5, 4);
+    scene.add(light);
 
-const float VREF = 5.0;
-const float ADC_MAX = 1023.0;
-float V0G = 1.65;        // adjust if needed
-const float SENS = 0.33; // V/g
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 1, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x4f83ff })
+    );
+    scene.add(cube);
 
-static inline float adcToG(int adc) {
-  float v = (adc * VREF) / ADC_MAX;
-  return (v - V0G) / SENS;
-}
+    function animate() {
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
 
-void setup() {
-  Serial.begin(115200);
-}
+    window.addEventListener('resize', () => {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
 
-void loop() {
-  float ax = adcToG(analogRead(PIN_X));
-  float ay = adcToG(analogRead(PIN_Y));
-  float az = adcToG(analogRead(PIN_Z));
+    function setCubeAngles(axDeg, ayDeg, azDeg) {
+      cube.rotation.x = THREE.MathUtils.degToRad(axDeg);
+      cube.rotation.y = THREE.MathUtils.degToRad(ayDeg);
+      cube.rotation.z = THREE.MathUtils.degToRad(azDeg);
+    }
 
-  // Use atan2(), sqrt(), pow() per lab hint :contentReference[oaicite:5]{index=5}
-  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+    // =======================
+    // Web Serial
+    // =======================
+    const connectBtn = document.getElementById('connectBtn');
+    const statusEl = document.getElementById('status');
+    const axEl = document.getElementById('ax');
+    const ayEl = document.getElementById('ay');
+    const azEl = document.getElementById('az');
 
-  // Print CSV: easier for web app parsing
-  Serial.print(angleX, 2); Serial.print(',');
-  Serial.print(angleY, 2); Serial.print(',');
-  Serial.println(angleZ, 2);
+    async function connectSerial() {
+      if (!('serial' in navigator)) {
+        alert('Web Serial not supported. Use Chrome or Edge.');
+        return;
+      }
 
-  delay(100); // 100 ms
-}
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
 
-#include <math.h>
+      statusEl.textContent = 'connected';
+      connectBtn.disabled = true;
 
-const int PIN_X = A0;
-const int PIN_Y = A1;
-const int PIN_Z = A2;
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      const reader = decoder.readable.getReader();
 
-const float VREF = 5.0;
-const float ADC_MAX = 1023.0;
-float V0G = 1.65;        // adjust if needed
-const float SENS = 0.33; // V/g (330 mV/g)
+      let buffer = '';
+      const rad2deg = 180 / Math.PI;
 
-static inline float adcToG(int adc) {
-  float v = (adc * VREF) / ADC_MAX;
-  return (v - V0G) / SENS;
-}
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
 
-void setup() {
-  Serial.begin(115200);
-}
+          buffer += value;
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
 
-void loop() {
-  float ax = adcToG(analogRead(PIN_X));
-  float ay = adcToG(analogRead(PIN_Y));
-  float az = adcToG(analogRead(PIN_Z));
+          for (const line of lines) {
+            const s = line.trim();
+            if (!s) continue;
 
-  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+            const parts = s.split(',');
+            if (parts.length !== 4) continue;
 
-  Serial.print(angleX, 2); Serial.print(',');
-  Serial.print(angleY, 2); Serial.print(',');
-  Serial.println(angleZ, 2);
+            const ax = parseFloat(parts[1]);
+            const ay = parseFloat(parts[2]);
+            const az = parseFloat(parts[3]);
 
-  delay(100);
-}
+            if (![ax, ay, az].every(Number.isFinite)) continue;
+
+            // Acceleration (g) -> tilt angles (deg)
+            const angleX = Math.atan2(ax, Math.sqrt(ay*ay + az*az)) * rad2deg;
+            const angleY = Math.atan2(ay, Math.sqrt(ax*ax + az*az)) * rad2deg;
+            const angleZ = Math.atan2(az, Math.sqrt(ax*ax + ay*ay)) * rad2deg;
+
+            axEl.textContent = angleX.toFixed(2);
+            ayEl.textContent = angleY.toFixed(2);
+            azEl.textContent = angleZ.toFixed(2);
+
+            pushPoint(angleX, angleY, angleZ);
+            setCubeAngles(angleX, angleY, angleZ);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        statusEl.textContent = 'disconnected';
+        connectBtn.disabled = false;
+        try { reader.releaseLock(); } catch {}
+        try { await port.close(); } catch {}
+      }
+    }
+
+    connectBtn.addEventListener('click', connectSerial);
+  </script>
+</body>
+</html>
