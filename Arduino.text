@@ -1,9 +1,16 @@
 /*
-  ADXL335 Lab - Single Sketch with MODE switch
+  ADXL335 Lab - Single Sketch with MODE switch (Lab-instruction compliant fixes)
+
+  What was fixed (without violating lab requirements):
+  - MODE 4: Added input smoothing (low-pass filter) BEFORE the angle formula to reduce jitter
+    while still using atan2(), sqrt(), pow(), and (180/PI) as the lab specifies.
+  - MODE 2: Removed extra Serial prints (optional debug) to better preserve ~2 ms sampling intent.
+  - MODE 1/2/3/4 timing remains per lab: ~1 ms, ~2 ms, ~2 ms, 100 ms.
+
   Modes:
-    1 = Part 1: Vibration (prints Ax Ay Az in g) every 1 ms (Serial Plotter friendly)
-    2 = Part 2a: Collision detect (if/else) sample every 2 ms, blink LED for 3 s on hit
-    3 = Part 2b: Collision detect (while) sample every 2 ms, blink LED for 3 s on hit
+    1 = Part 1: Vibration (prints Ax Ay Az in g) every ~1 ms (Serial Plotter friendly)
+    2 = Part 2a: Collision detect (if/else) sample every ~2 ms, blink LED for 3 s on hit
+    3 = Part 2b: Collision detect (while) sample every ~2 ms, blink LED for 3 s on hit
     4 = Part 3/4: Angles (prints angleX,angleY,angleZ CSV) every 100 ms (for GitHub page)
 
   How to change MODE:
@@ -22,7 +29,7 @@ const int LED_PIN = LED_BUILTIN;
 // ---------- Accelerometer constants ----------
 const float VREF = 5.0;         // UNO default analog reference
 const float ADC_MAX = 1023.0;
-float V0G = 1.65;               // nominal 0g voltage
+float V0G = 1.65;               // nominal 0g voltage (can be calibrated)
 const float SENS = 0.33;        // V/g (330 mV/g)
 
 // ---------- Part 2 threshold ----------
@@ -30,6 +37,15 @@ const float THRESH_G = 2.8;
 
 // ---------- Mode ----------
 volatile int MODE = 4;          // default to angles for Part 4
+
+// ---------- MODE 4 smoothing (lab-compliant) ----------
+// We smooth Ax/Ay/Az, then use the SAME angle equations with atan2/sqrt/pow and (180/PI).
+// Smaller ALPHA => smoother (less jitter) but more lag.
+const float ALPHA = 0.12f;      // try 0.08–0.20
+static float fax = 0.0f;
+static float fay = 0.0f;
+static float faz = 0.0f;
+static bool filterInit = false;
 
 // ---------- Helpers ----------
 static inline float adcToG(int adc) {
@@ -57,6 +73,9 @@ void readModeFromSerial() {
       MODE = c - '0';
       Serial.print("MODE set to ");
       Serial.println(MODE);
+
+      // Re-init filter when switching into MODE 4 so the first output doesn't "ramp"
+      if (MODE == 4) filterInit = false;
     }
   }
 }
@@ -87,7 +106,7 @@ void loop() {
     Serial.print(ax, 3); Serial.print(' ');
     Serial.print(ay, 3); Serial.print(' ');
     Serial.println(az, 3);
-    delayMicroseconds(1000); // 1 ms
+    delayMicroseconds(1000); // ~1 ms
     return;
   }
 
@@ -99,11 +118,7 @@ void loop() {
     } else {
       // do nothing
     }
-    // optional debug output
-    Serial.print(ax, 3); Serial.print(' ');
-    Serial.print(ay, 3); Serial.print(' ');
-    Serial.println(az, 3);
-    delayMicroseconds(2000); // 2 ms
+    delayMicroseconds(2000); // ~2 ms
     return;
   }
 
@@ -116,19 +131,32 @@ void loop() {
         digitalWrite(LED_PIN, LOW);  delay(100);
       }
     }
-    delayMicroseconds(2000); // 2 ms
+    delayMicroseconds(2000); // ~2 ms
     return;
   }
 
   // MODE == 4 (default): Part 3/4 angles (CSV for GitHub page)
-  float angleX = atan2(ax, sqrt(pow(ay, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleY = atan2(ay, sqrt(pow(ax, 2) + pow(az, 2))) * (180.0 / PI);
-  float angleZ = atan2(az, sqrt(pow(ax, 2) + pow(ay, 2))) * (180.0 / PI);
+
+  // --- Lab-compliant smoothing on acceleration inputs ---
+  // Initialize filter with the first sample to avoid a ramp from 0.
+  if (!filterInit) {
+    fax = ax; fay = ay; faz = az;
+    filterInit = true;
+  } else {
+    fax = (1.0f - ALPHA) * fax + ALPHA * ax;
+    fay = (1.0f - ALPHA) * fay + ALPHA * ay;
+    faz = (1.0f - ALPHA) * faz + ALPHA * az;
+  }
+
+  // --- SAME lab-style formula requirements: atan2(), sqrt(), pow(), (180/PI) ---
+  float angleX = atan2(fax, sqrt(pow(fay, 2) + pow(faz, 2))) * (180.0 / PI);
+  float angleY = atan2(fay, sqrt(pow(fax, 2) + pow(faz, 2))) * (180.0 / PI);
+  float angleZ = atan2(faz, sqrt(pow(fax, 2) + pow(fay, 2))) * (180.0 / PI);
 
   // CSV only: angleX,angleY,angleZ
   Serial.print(angleX, 2); Serial.print(',');
   Serial.print(angleY, 2); Serial.print(',');
   Serial.println(angleZ, 2);
 
-  delay(100); // 100 ms
+  delay(100); // 100 ms (lab requirement)
 }
